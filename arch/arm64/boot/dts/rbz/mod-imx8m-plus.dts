@@ -61,33 +61,6 @@
         reset-post-delay-ms = <40>;
         #reset-cells = <0>;
     };
-
-	sound-hdmi {
-		compatible = "fsl,imx-audio-cdnhdmi";
-		model = "audio-hdmi";
-		audio-cpu = <&aud2htx>;
-		hdmi-out;
-		constraint-rate = <44100>,
-				<88200>,
-				<176400>,
-				<32000>,
-				<48000>,
-				<96000>,
-				<192000>;
-		status = "okay";
-	};
-
-	sound-micfil {
-		compatible = "fsl,imx-audio-micfil";
-		model = "imx-audio-micfil";
-		cpu-dai = <&micfil>;
-	};
-
-	sound-xcvr {
-		compatible = "fsl,imx-audio-xcvr";
-		model = "imx-audio-xcvr";
-		cpu-dai = <&xcvr>;
-	};
 };
 
 &A53_0 {
@@ -95,15 +68,15 @@
 };
 
 &A53_1 {
-	cpu-supply = <&buck2>;
+	cpu-supply = <&buck2_reg>;
 };
 
 &A53_2 {
-	cpu-supply = <&buck2>;
+	cpu-supply = <&buck2_reg>;
 };
 
 &A53_3 {
-	cpu-supply = <&buck2>;
+	cpu-supply = <&buck2_reg>;
 };
 
 &dsp {
@@ -126,7 +99,7 @@
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
             interrupt-parent = <&gpio1>;
-            interrupts = <9 8>; 
+            interrupts = <9 8>;
 			eee-broken-1000t;
 		};
 	};
@@ -284,8 +257,7 @@
 	};
 };
 
-&easrc {
-	fsl,asrc-rate  = <48000>;
+&snvs_pwrkey {
 	status = "okay";
 };
 
@@ -294,12 +266,12 @@
 	pinctrl-0 = <&pinctrl_pcie>;
 	reset-gpio = <&gpio2 9 GPIO_ACTIVE_LOW>;
 	ext_osc = <1>;
-	clocks = <&clk IMX8MP_CLK_HSIO_AXI_DIV>,
+	clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
 		 <&clk IMX8MP_CLK_PCIE_AUX>,
-		 <&clk IMX8MP_CLK_DUMMY>,
+		 <&clk IMX8MP_CLK_HSIO_AXI>,
 		 <&clk IMX8MP_CLK_PCIE_ROOT>;
 	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
-	assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI_SRC>,
+	assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI>,
 			  <&clk IMX8MP_CLK_PCIE_AUX>;
 	assigned-clock-rates = <500000000>, <10000000>;
 	assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>,
@@ -312,12 +284,12 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie>;
 	ext_osc = <1>;
-	clocks = <&clk IMX8MP_CLK_HSIO_AXI_DIV>,
+	clocks = <&clk IMX8MP_CLK_HSIO_ROOT>,
 		 <&clk IMX8MP_CLK_PCIE_AUX>,
-		 <&clk IMX8MP_CLK_DUMMY>,
+		 <&clk IMX8MP_CLK_HSIO_AXI>,
 		 <&clk IMX8MP_CLK_PCIE_ROOT>;
 	clock-names = "pcie", "pcie_aux", "pcie_phy", "pcie_bus";
-	assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI_SRC>,
+	assigned-clocks = <&clk IMX8MP_CLK_HSIO_AXI>,
 			  <&clk IMX8MP_CLK_PCIE_AUX>;
 	assigned-clock-rates = <500000000>, <10000000>;
 	assigned-clock-parents = <&clk IMX8MP_SYS_PLL2_500M>,
@@ -327,11 +299,6 @@
 
 &pcie_phy{
 	ext_osc = <1>;
-	status = "okay";
-};
-
-&xcvr {
-	#sound-dai-cells = <0>;
 	status = "okay";
 };
 

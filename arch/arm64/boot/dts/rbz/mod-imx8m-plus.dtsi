@@ -3,14 +3,7 @@
  * Copyright 2019 NXP
  */
 
-/dts-v1/;
-
-#include "imx8mp.dtsi"
-
 / {
-	model = "RBZ MOD_IMX8M_PLUS Board";
-	compatible = "fsl,imx8mp-evk", "fsl,imx8mp";
-
 	chosen {
 		stdout-path = &uart3;
 	};
@@ -102,6 +95,26 @@
 			eee-broken-1000t;
 		};
 	};
+};
+
+&ecspi1 {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    fsl,spi-num-chipselects = <2>;
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_ecspi1 &pinctrl_ecspi1_cs>;
+    cs-gpios = <&gpio5 9 GPIO_ACTIVE_LOW>, <&gpio1 7 GPIO_ACTIVE_LOW>;
+    status = "disabled";
+};
+
+&ecspi3 {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    fsl,spi-num-chipselects = <2>;
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_ecspi3 &pinctrl_ecspi3_cs>;
+    cs-gpios = <&gpio5 25 GPIO_ACTIVE_LOW>, <&gpio1 8 GPIO_ACTIVE_LOW>;
+    status = "disabled";
 };
 
 &flexspi {
@@ -463,6 +476,36 @@
 			MX8MP_IOMUXC_SAI5_RXD3__CAN2_TX		0x16
 		>;
 	};
+    
+    pinctrl_ecspi1: ecspi1grp {
+        fsl,pins = <
+            MX8MP_IOMUXC_ECSPI1_SCLK__ECSPI1_SCLK   0x82
+            MX8MP_IOMUXC_ECSPI1_MOSI__ECSPI1_MOSI   0x82
+            MX8MP_IOMUXC_ECSPI1_MISO__ECSPI1_MISO   0x82
+        >;
+    };
+
+    pinctrl_ecspi1_cs: ecspi1_csgrp {
+        fsl,pins = <
+            MX8MP_IOMUXC_ECSPI1_SS0__GPIO5_IO09     0x40000
+            MX8MP_IOMUXC_GPIO1_IO07__GPIO1_IO07     0x40000
+        >;
+    }; 
+
+    pinctrl_ecspi3: ecspi3grp {
+        fsl,pins = <
+            MX8MP_IOMUXC_UART1_RXD__ECSPI3_SCLK     0x82
+            MX8MP_IOMUXC_UART1_TXD__ECSPI3_MOSI     0x82
+            MX8MP_IOMUXC_UART2_RXD__ECSPI3_MISO     0x82
+        >;
+    };
+
+    pinctrl_ecspi3_cs: ecspi3_csgrp {
+        fsl,pins = <
+            MX8MP_IOMUXC_UART2_TXD__GPIO5_IO25      0x40000
+            MX8MP_IOMUXC_GPIO1_IO08__GPIO1_IO08     0x40000
+        >;
+    }; 
 
 	pinctrl_flexspi0: flexspi0grp {
 		fsl,pins = <

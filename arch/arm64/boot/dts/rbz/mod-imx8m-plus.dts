@@ -121,6 +121,18 @@
 	};
 };
 
+&flexcan1 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_flexcan1>;
+    status = "okay";
+};
+
+&flexcan2 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_flexcan2>;
+    status = "okay";
+};
+
 &i2c1 {
     clock-frequency = <100000>;
     pinctrl-names = "default";
@@ -436,6 +448,20 @@
 			MX8MP_IOMUXC_ENET_TXC__CCM_ENET_QOS_CLOCK_GENERATE_TX_CLK	0x1f
 			MX8MP_IOMUXC_SAI3_RXFS__GPIO4_IO28		0x19
             MX8MP_IOMUXC_GPIO1_IO09__GPIO1_IO09     0x1c4
+		>;
+	};
+
+    pinctrl_flexcan1: flexcan1grp {
+        fsl,pins = <
+            MX8MP_IOMUXC_SAI5_RXD2__CAN1_RX     0x16
+            MX8MP_IOMUXC_SAI5_RXD1__CAN1_TX     0x16
+        >;
+    };
+	
+    pinctrl_flexcan2: flexcan2grp {
+		fsl,pins = <
+			MX8MP_IOMUXC_SAI5_MCLK__CAN2_RX		0x16
+			MX8MP_IOMUXC_SAI5_RXD3__CAN2_TX		0x16
 		>;
 	};
 

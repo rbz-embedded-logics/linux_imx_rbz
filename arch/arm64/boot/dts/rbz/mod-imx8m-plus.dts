@@ -270,6 +270,11 @@
 			};
 		};
 	};
+
+    tpm: tpm@29 {
+        compatible = "atmel,at97sc3204t";
+        reg = <0x29>;
+    };
 };
 
 &snvs_pwrkey {

@@ -17,8 +17,8 @@
 	};
 
 	chosen {
-        bootargs = "console=ttymxc0,115200 earlycon=ec_imx6q,0x30860000,115200";
-		stdout-path = &uart1;
+        bootargs = "console=ttymxc2,115200 earlycon=ec_imx6q,0x30880000,115200";
+		stdout-path = &uart3;
 	};
 };
 
@@ -313,12 +313,11 @@
   status = "okay";
 };
 
-&uart1 {
+&uart3 {
   pinctrl-names = "default";
-  pinctrl-0 = <&pinctrl_uart1>;
-  assigned-clocks = <&clk IMX8MN_CLK_UART1>;
+  pinctrl-0 = <&pinctrl_uart3>;
+  assigned-clocks = <&clk IMX8MN_CLK_UART3>;
   assigned-clock-parents = <&clk IMX8MN_SYS_PLL1_80M>;
-  fsl,dte-mode;
   status = "okay";
 };
 
@@ -341,10 +340,10 @@
         >;
     };
 
-    pinctrl_uart1: uart1grp {
+    pinctrl_uart3: uart3grp {
         fsl,pins = <
-            MX8MN_IOMUXC_SAI2_RXFS_UART1_DTE_RX     0x116
-            MX8MN_IOMUXC_SAI2_RXC_UART1_DTE_TX      0x116
+            MX8MN_IOMUXC_UART3_RXD_UART3_DCE_RX     0x116
+            MX8MN_IOMUXC_UART3_TXD_UART3_DCE_TX     0x116
         >;
     }; 
 

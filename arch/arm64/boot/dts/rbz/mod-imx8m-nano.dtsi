@@ -259,6 +259,92 @@
 			};
 		};
 	};
+    
+    dsi_lvds_bridge: sn65dsi84@2c {
+      compatible = "ti,sn65dsi83";
+      reg = <0x2c>;
+      ti,dsi-lanes = <4>;
+      ti,lvds-format = <2>;
+      ti,lvds-bpp = <24>;
+      ti,width-mm = <217>;
+      ti,height,mm = <136>;
+      enable-gpios = <&gpio1 5 GPIO_ACTIVE_HIGH>;
+      interrupt-parent = <&gpio1>;
+      interrupts = <4 IRQ_TYPE_LEVEL_HIGH>;
+      pinctrl-names = "default";
+      pinctrl-0 = <&pinctrl_lvds>;
+      pinctrl-assert-gpios = <&gpio1 8 GPIO_ACTIVE_LOW>;
+      status = "okay";
+
+      display-timings {
+        native-mode = <&lvds_timing1>;
+
+        lvds_timing0: lvds_timing@0 {
+          clock-frequency = <68900000>;
+          hactive = <1280>;
+          vactive = <800>;
+          hfront-porch = <120>;
+          hback-porch = <1>;
+          hsync-len = <8>;
+          vback-porch = <10>;
+          vfront-porch = <1>;
+          vsync-len = <4>;
+          hsync-active = <1>;
+          vsync-active = <1>;
+          de-active = <1>;
+          pixelclk-active = <0>;
+        };
+
+        lvds_timing1: lvds_timing@1 {
+          clock-frequency = <25000000>;
+          hactive = <640>;
+          vactive = <480>;
+          hfront-porch = <1>;
+          hback-porch = <7>;
+          hsync-len = <60>;
+          vback-porch = <20>;
+          vfront-porch = <20>;
+          vsync-len = <10>;
+          hsync-active = <0>;
+          vsync-active = <0>;
+          de-active = <0>;
+          pixelclk-active = <0>;
+        };
+
+        lvds_timing2: lvds_timing@2 {
+          clock-frequency = <65000000>;
+          hactive = <1024>;
+          vactive = <768>;
+          hfront-porch = <24>;
+          hback-porch = <160>;
+          hsync-len = <136>;
+          vfront-porch = <3>;
+          vback-porch = <29>;
+          vsync-len = <6>;
+        };
+      };
+      
+      port {
+        dsi_lvds_bridge_in: endpoint {
+          remote-endpoint = <&mipi_dsi_lvds_out>;
+        };
+      };
+    };          
+};
+
+&lcdif {
+  status = "okay";
+};
+
+&mipi_dsi {
+  status = "okay";
+
+  port@1 {
+    mipi_dsi_lvds_out: endpoint {
+      remote-endpoint = <&dsi_lvds_bridge_in>;
+      attach-bridge;
+    };
+  };
 };
 
 &i2c4 {
@@ -304,8 +390,6 @@
 &uart3 {
   pinctrl-names = "default";
   pinctrl-0 = <&pinctrl_uart3>;
-  assigned-clocks = <&clk IMX8MN_CLK_UART3>;
-  assigned-clock-parents = <&clk IMX8MN_SYS_PLL1_80M>;
   status = "okay";
 };
 
@@ -634,4 +718,13 @@
             MX8MN_IOMUXC_SAI3_MCLK_PWM4_OUT          0x16
         >;
     };
+
+    pinctrl_lvds: lvdsgrp {
+        fsl,pins = <
+            /* Enable */
+            MX8MN_IOMUXC_GPIO1_IO05_GPIO1_IO5       0x19
+            /* Interrupt */
+            MX8MN_IOMUXC_GPIO1_IO04_GPIO1_IO4       0x19
+        >;
+    };    
 };

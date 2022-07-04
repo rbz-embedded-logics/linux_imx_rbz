@@ -8,6 +8,13 @@
 		device_type = "memory";
 		reg = <0x0 0x40000000 0 0x80000000>;
 	};
+
+    /* fixed crystal dedicated to sc16i2752i */
+    sc16is752i_osc: sc16is752i_osc {
+        compatible = "fixed-clock";
+        #clock-cells = <0>;
+        clock-frequency = <18432000>;
+    };
 };
 
 &A53_0 {
@@ -147,6 +154,19 @@
   pinctrl-0 = <&pinctrl_ecspi3 &pinctrl_ecspi3_cs>;
   cs-gpios = <&gpio5 25 GPIO_ACTIVE_LOW>;
   status = "okay";
+
+  sc16is752: sc16is752@0 {
+    compatible = "nxp,sc16is752";
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_uartirq>;
+    reg = <0>;
+    clocks = <&sc16is752i_osc>;
+    spi-max-frequency = <2000000>;
+    interrupt-parent = <&gpio2>;
+    interrupts = <7 IRQ_TYPE_EDGE_FALLING>;
+    gpio-controller;
+    #gpio-cells = <2>;
+  };
 };
 
 &i2c1 {
@@ -514,7 +534,7 @@
 
     pinctrl_uartirq: uartirqgrp {
         fsl,pins = <
-            MX8MN_IOMUXC_SD1_DATA5_GPIO2_IO7       0x19
+            MX8MN_IOMUXC_SD1_DATA5_GPIO2_IO7       0x159
         >;
     };
 

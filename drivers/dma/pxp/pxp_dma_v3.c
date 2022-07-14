@@ -626,7 +626,7 @@ struct edge_node {
 	uint32_t adjvex;
 	uint32_t prev_vnode;
 	struct edge_node *next;
-	uint32_t mux_used;
+	unsigned long mux_used;
 	struct mux_config muxes;
 };
 
@@ -944,6 +944,7 @@ static void pxp_lut_cleanup_multiple(struct pxps *pxp, u64 lut, bool set);
 static void pxp_lut_cleanup_multiple_v3p(struct pxps *pxp, u64 lut, bool set);
 static void pxp_luts_deactivate(struct pxps *pxp, u64 lut_status);
 static void pxp_set_colorkey(struct pxps *pxp);
+static void pxp_software_restart(struct pxps *pxp);
 
 enum {
 	DITHER0_LUT = 0x0,	/* Select the LUT memory for access */
@@ -961,9 +962,11 @@ enum {
 enum pxp_devtype {
 	PXP_V3,
 	PXP_V3P,	/* minor changes over V3, use WFE_B to replace WFE_A */
+	PXP_V3_8ULP,	/* PXP V3 version for iMX8ULP */
 };
 
-#define pxp_is_v3(pxp) (pxp->devdata->version == 30)
+#define pxp_is_v3(pxp) ((pxp->devdata->version == 30) || \
+			(pxp->devdata->version == 32))
 #define pxp_is_v3p(pxp) (pxp->devdata->version == 31)
 
 struct pxp_devdata {
@@ -974,6 +977,7 @@ struct pxp_devdata {
 	void (*pxp_dithering_configure)(struct pxps *pxp);
 	void (*pxp_lut_cleanup_multiple)(struct pxps *pxp, u64 lut, bool set);
 	void (*pxp_data_path_config)(struct pxps *pxp);
+	void (*pxp_restart)(struct pxps *pxp);
 	unsigned int version;
 };
 
@@ -986,6 +990,7 @@ static const struct pxp_devdata pxp_devdata[] = {
 		.pxp_lut_cleanup_multiple = pxp_lut_cleanup_multiple,
 		.pxp_dithering_configure = pxp_dithering_configure,
 		.pxp_data_path_config = NULL,
+		.pxp_restart = NULL,
 		.version = 30,
 	},
 	[PXP_V3P] = {
@@ -996,7 +1001,19 @@ static const struct pxp_devdata pxp_devdata[] = {
 		.pxp_lut_cleanup_multiple = pxp_lut_cleanup_multiple_v3p,
 		.pxp_dithering_configure = pxp_dithering_configure_v3p,
 		.pxp_data_path_config = pxp_data_path_config_v3p,
+		.pxp_restart = NULL,
 		.version = 31,
+	},
+	[PXP_V3_8ULP] = {
+		.pxp_wfe_a_configure = pxp_wfe_a_configure,
+		.pxp_wfe_a_process = pxp_wfe_a_process,
+		.pxp_lut_status_set = pxp_lut_status_set,
+		.pxp_lut_status_clr = pxp_lut_status_clr,
+		.pxp_lut_cleanup_multiple = pxp_lut_cleanup_multiple,
+		.pxp_dithering_configure = pxp_dithering_configure,
+		.pxp_data_path_config = NULL,
+		.pxp_restart = pxp_software_restart,
+		.version = 32,
 	},
 };
 
@@ -1298,6 +1315,16 @@ static void pxp_set_colorkey(struct pxps *pxp)
 		pxp_writel(0xFFFFFF, HW_PXP_AS_CLRKEYLOW_0);
 		pxp_writel(0, HW_PXP_AS_CLRKEYHIGH_0);
 	}
+}
+
+static void pxp_software_restart(struct pxps *pxp)
+{
+	pxp_soft_reset(pxp);
+	pxp_writel(0x0, HW_PXP_CTRL);
+
+	if (pxp->devdata && pxp->devdata->pxp_data_path_config)
+		pxp->devdata->pxp_data_path_config(pxp);
+	__raw_writel(0xffff, pxp->base + HW_PXP_IRQ_MASK);
 }
 
 static uint32_t pxp_parse_as_fmt(uint32_t format)
@@ -1697,13 +1724,13 @@ static uint32_t pxp_store_shift_ctrl_config(struct pxp_pixmap *out,
 		switch(out->format) {
 		case PXP_PIX_FMT_YUYV:
 			shift_bypass = 1;
-			/* fall through */
+			fallthrough;
 		case PXP_PIX_FMT_YVYU:
 			shift_ctrl.out_yuv422_1p_en = 1;
 			break;
 		case PXP_PIX_FMT_NV16:
 			shift_bypass = 1;
-			/* fall through */
+			fallthrough;
 		case PXP_PIX_FMT_NV61:
 			shift_ctrl.out_yuv422_2p_en = 1;
 			break;
@@ -3100,7 +3127,7 @@ static void mux_config_helper(struct mux_config *path_ctrl,
 
 	if (enode->mux_used) {
 		do {
-			mux_pos = find_next_bit((unsigned long *)&enode->mux_used,
+			mux_pos = find_next_bit(&enode->mux_used,
 						32, mux_pos);
 			if (mux_pos >= 16)
 				break;
@@ -3606,6 +3633,10 @@ static void pxp_clk_enable(struct pxps *pxp)
 
 	clk_prepare_enable(pxp->ipg_clk);
 	clk_prepare_enable(pxp->axi_clk);
+
+	if (pxp->devdata && pxp->devdata->pxp_restart)
+		pxp->devdata->pxp_restart(pxp);
+
 	pxp->clk_stat = CLK_STAT_ON;
 
 	mutex_unlock(&pxp->clk_mutex);
@@ -3624,14 +3655,13 @@ static void pxp_clk_disable(struct pxps *pxp)
 
 	spin_lock_irqsave(&pxp->lock, flags);
 	if ((pxp->pxp_ongoing == 0) && list_empty(&head)) {
+		pxp->clk_stat = CLK_STAT_OFF;
 		spin_unlock_irqrestore(&pxp->lock, flags);
 		clk_disable_unprepare(pxp->ipg_clk);
 		clk_disable_unprepare(pxp->axi_clk);
-		pxp->clk_stat = CLK_STAT_OFF;
+		pm_runtime_put_sync_suspend(pxp->dev);
 	} else
 		spin_unlock_irqrestore(&pxp->lock, flags);
-
-	pm_runtime_put_sync_suspend(pxp->dev);
 
 	mutex_unlock(&pxp->clk_mutex);
 }
@@ -6404,13 +6434,16 @@ static void pxp_lut_cleanup_multiple(struct pxps *pxp, u64 lut, bool set)
 	struct pxp_config_data *pxp_conf = &pxp->pxp_conf_state;
 	struct pxp_proc_data *proc_data = &pxp_conf->proc_data;
 
-	if (of_machine_is_compatible("fsl,imx8ulp"))
-		return;
+	u32 val;
 
 	if (proc_data->lut_cleanup == 1) {
 		if (set) {
-			__raw_writel((u32)lut, pxp->base + HW_PXP_WFE_A_STG1_8X1_OUT1_0 + 0x4);
-			__raw_writel((u32)(lut>>32), pxp->base + HW_PXP_WFE_A_STG1_8X1_OUT1_1 + 0x4);
+			val = __raw_readl(pxp->base + HW_PXP_WFE_A_STG1_8X1_OUT1_0);
+			val |= (u32)lut;
+			__raw_writel(val, pxp->base + HW_PXP_WFE_A_STG1_8X1_OUT1_0);
+			val = __raw_readl(pxp->base + HW_PXP_WFE_A_STG1_8X1_OUT1_1);
+			val |= (u32)(lut >> 32);
+			__raw_writel(val, pxp->base + HW_PXP_WFE_A_STG1_8X1_OUT1_1);
 		} else {
 			pxp_luts_deactivate(pxp, lut);
 			__raw_writel(0, pxp->base + HW_PXP_WFE_A_STG1_8X1_OUT1_0);
@@ -7557,6 +7590,9 @@ static struct platform_device_id imx_pxpdma_devtype[] = {
 		.name = "imx6ull-pxp-dma",
 		.driver_data = PXP_V3P,
 	}, {
+		.name = "imx8ulp-pxp-dma",
+		.driver_data = PXP_V3_8ULP,
+	}, {
 		/* sentinel */
 	}
 };
@@ -7565,6 +7601,7 @@ MODULE_DEVICE_TABLE(platform, imx_pxpdma_devtype);
 static const struct of_device_id imx_pxpdma_dt_ids[] = {
 	{ .compatible = "fsl,imx7d-pxp-dma", .data = &imx_pxpdma_devtype[0], },
 	{ .compatible = "fsl,imx6ull-pxp-dma", .data = &imx_pxpdma_devtype[1], },
+	{ .compatible = "fsl,imx8ulp-pxp-dma", .data = &imx_pxpdma_devtype[2], },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, imx_pxpdma_dt_ids);
@@ -7643,7 +7680,7 @@ static int pxp_init_interrupt(struct platform_device *pdev)
 				err);
 			return err;
 		}
-		/* fallthrough */
+		fallthrough;
 	case 1:
 		legacy_irq = platform_get_irq(pdev, 0);
 		if (legacy_irq < 0) {
@@ -7729,7 +7766,7 @@ static bool search_mux_chain(uint32_t mux_id,
 		if (output == 0xff)
 			break;
 
-		if ((output == enode->adjvex)) {
+		if (output == enode->adjvex) {
 			/* found */
 			found = true;
 			break;
@@ -7744,7 +7781,7 @@ static bool search_mux_chain(uint32_t mux_id,
 						break;
 				}
 
-				set_bit(next_mux, (unsigned long *)&enode->mux_used);
+				set_bit(next_mux, &enode->mux_used);
 				set_mux_val(&enode->muxes, next_mux, j);
 				break;
 			}
@@ -7791,7 +7828,7 @@ static void enode_mux_config(unsigned int vnode_id,
 		}
 
 		if (via_mux) {
-			set_bit(i, (unsigned long *)&enode->mux_used);
+			set_bit(i, &enode->mux_used);
 			set_mux_val(&enode->muxes, i, j);
 			break;
 		}
@@ -7845,7 +7882,7 @@ static int pxp_create_initial_graph(struct platform_device *pdev)
 
 				curr = enode;
 				enode_mux_config(i, enode);
-				dev_dbg(&pdev->dev, "(%d -> %d): mux_used 0x%x, mux_config 0x%x\n\n",
+				dev_dbg(&pdev->dev, "(%d -> %d): mux_used 0x%lx, mux_config 0x%x\n\n",
 					 i, j, enode->mux_used, *(unsigned int*)&enode->muxes);
 			}
 		}

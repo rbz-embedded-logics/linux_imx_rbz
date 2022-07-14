@@ -55,6 +55,8 @@
 
 #include "gc_hal_kernel_precomp.h"
 
+#include "gc_hal_kernel_debug.h"
+
 #if gcdDEC_ENABLE_AHB
 #include "viv_dec300_main.h"
 #endif
@@ -467,6 +469,15 @@ _SetRecovery(
     {
         /* Dump stuck information if Recovery is disabled. */
         Kernel->stuckDump = gcmMAX(StuckDump, gcvSTUCK_DUMP_USER_COMMAND);
+    }
+
+    /*
+        Dump level in 11~15 is FORCE-DUMP model. Whether Recovery is enabled
+        or not, the driver will dump related information.
+    */
+    if (StuckDump > gcvSTUCK_DUMP_ALL_CORE)
+    {
+        Kernel->stuckDump = StuckDump - 10;
     }
 
     return gcvSTATUS_OK;
@@ -968,6 +979,11 @@ gckKERNEL_Destroy(
     {
         /* Detsroy the client atom. */
         gcmkVERIFY_OK(gckOS_AtomDestroy(Kernel->os, Kernel->atomClients));
+    }
+
+    if (Kernel->resetStatus)
+    {
+        gcmkVERIFY_OK(gckOS_AtomDestroy(Kernel->os, Kernel->resetStatus));
     }
 
     gcmkVERIFY_OK(gckOS_DeleteMutex(Kernel->os, Kernel->vidMemBlockMutex));
@@ -1565,6 +1581,7 @@ _AllocateLinearMemory(
                                    gcvNULL,
                                    bytes));
 
+
     /* Return status. */
     gcmkFOOTER_ARG("pool=%d node=0x%x", pool, handle);
     return gcvSTATUS_OK;
@@ -1630,6 +1647,7 @@ _ReleaseVideoMemory(
          | (nodeObject->type << gcdDB_VIDEO_MEMORY_TYPE_SHIFT)
          | (nodeObject->pool << gcdDB_VIDEO_MEMORY_POOL_SHIFT);
 
+
     gcmkONERROR(gckVIDMEM_NODE_IsContiguous(Kernel, nodeObject, &isContiguous));
 
     if (isContiguous)
@@ -1643,9 +1661,11 @@ _ReleaseVideoMemory(
             type,
             gcmINT2PTR(Handle)));
 
-    gckVIDMEM_HANDLE_Dereference(Kernel, ProcessID, Handle);
+    gcmkONERROR(
+        gckVIDMEM_HANDLE_Dereference(Kernel, ProcessID, Handle));
 
-    gckVIDMEM_NODE_Dereference(Kernel, nodeObject);
+    gcmkONERROR(
+        gckVIDMEM_NODE_Dereference(Kernel, nodeObject));
 
     gcmkFOOTER_NO();
     return gcvSTATUS_OK;
@@ -2067,6 +2087,8 @@ _ImportVideoMemory(
     gceSTATUS status;
     gckVIDMEM_NODE nodeObject = gcvNULL;
     gctUINT32 handle = 0;
+    gceDATABASE_TYPE type;
+    gctBOOL isContiguous;
 
     gcmkONERROR(
         gckVIDMEM_NODE_Import(Kernel,
@@ -2078,11 +2100,20 @@ _ImportVideoMemory(
         gckVIDMEM_HANDLE_Allocate(Kernel,
                                   nodeObject,
                                   &handle));
+    type = gcvDB_VIDEO_MEMORY
+         | (nodeObject->type << gcdDB_VIDEO_MEMORY_TYPE_SHIFT)
+         | (nodeObject->pool << gcdDB_VIDEO_MEMORY_POOL_SHIFT);
+
+    gcmkONERROR(gckVIDMEM_NODE_IsContiguous(Kernel, nodeObject, &isContiguous));
+    if (isContiguous)
+    {
+        type |= (gcvDB_CONTIGUOUS << gcdDB_VIDEO_MEMORY_DBTYPE_SHIFT);
+    }
 
     gcmkONERROR(
         gckKERNEL_AddProcessDB(Kernel,
                                ProcessID,
-                               gcvDB_VIDEO_MEMORY,
+                               type,
                                gcmINT2PTR(handle),
                                gcvNULL,
                                0));
@@ -2930,7 +2961,7 @@ gckKERNEL_Dispatch(
     gckKERNEL kernel = Kernel;
     gctUINT32 processID;
 #if !USE_NEW_LINUX_SIGNAL
-    gctSIGNAL   signal;
+    gctSIGNAL   signal = gcvNULL;
 #endif
 
     gctBOOL powerMutexAcquired = gcvFALSE;
@@ -3360,6 +3391,7 @@ gckKERNEL_Dispatch(
                             Interface->u.DebugLevelZone.enable);
         break;
 
+#if gcdDUMP_IN_KERNEL
     case gcvHAL_DEBUG_DUMP:
         gckOS_DumpBuffer(Kernel->os,
                          Interface->u.DebugDump.type,
@@ -3368,6 +3400,7 @@ gckKERNEL_Dispatch(
                          Interface->u.DebugDump.size);
         status = gcvSTATUS_OK;
         break;
+#endif
 
     case gcvHAL_DUMP_GPU_STATE:
         {
@@ -4030,15 +4063,11 @@ gckKERNEL_AttachProcessEx(
             }
         }
 
-        if (Kernel->timeoutPID == PID)
+        if (Kernel->timeoutPID == PID && Kernel->hardware != gcvNULL)
         {
             Kernel->timeOut = Kernel->hardware->type == gcvHARDWARE_2D
                             ? gcdGPU_2D_TIMEOUT
                             : gcdGPU_TIMEOUT;
-
-            gcmkVERIFY_OK(gckOS_StopTimer(Kernel->os, Kernel->monitorTimer));
-
-            gcmkVERIFY_OK(gckOS_StartTimer(Kernel->os, Kernel->monitorTimer, 100));
         }
     }
 
@@ -4099,6 +4128,9 @@ gckKERNEL_Recovery(
     if (Kernel->stuckDump == gcvSTUCK_DUMP_NONE)
     {
         gcmkPRINT("[galcore]: GPU[%d] hang, automatic recovery.", Kernel->core);
+#ifdef __QNXNTO__
+        SLOG_CRITICAL("[galcore]: GPU[%d] hang, automatic recovery.", Kernel->core);
+#endif
     }
     else if (Kernel->stuckDump == gcvSTUCK_DUMP_ALL_CORE)
     {
@@ -4520,7 +4552,7 @@ gckKERNEL_CreateIntegerDatabase(
 
     *Database = database;
 
-    gcmkFOOTER_ARG("*Database=0x%08X", *Database);
+    gcmkFOOTER_ARG("*Database=%p", *Database);
     return gcvSTATUS_OK;
 
 OnError:
@@ -4747,7 +4779,7 @@ gckKERNEL_QueryIntegerId(
 
     gcmkVERIFY_OK(gckOS_ReleaseMutex(os, database->mutex));
 
-    gcmkFOOTER_ARG("*Pointer=0x%08X", *Pointer);
+    gcmkFOOTER_ARG("*Pointer=%p", *Pointer);
     return gcvSTATUS_OK;
 
 OnError:
@@ -4793,7 +4825,7 @@ gckKERNEL_QueryPointerFromName(
     /* Lookup in database to get pointer. */
     gcmkONERROR(gckKERNEL_QueryIntegerId(database, Name, &pointer));
 
-    gcmkFOOTER_ARG("pointer=0x%X", pointer);
+    gcmkFOOTER_ARG("pointer=%p", pointer);
     return pointer;
 
 OnError:
@@ -4809,7 +4841,7 @@ gckKERNEL_DeleteName(
 {
     gctPOINTER database = Kernel->db->pointerDatabase;
 
-    gcmkHEADER_ARG("Kernel=%p Name=%p", Kernel, Name);
+    gcmkHEADER_ARG("Kernel=%p Name=0x%x", Kernel, Name);
 
     /* Free name if exists. */
     gcmkVERIFY_OK(gckKERNEL_FreeIntegerId(database, Name));
@@ -5228,7 +5260,41 @@ OnError:
 /*******************************************************************************\
 *************************** List Helper *****************************************
 \*******************************************************************************/
+#ifdef LINUX_VERSION_CODE
+void inline
+gcsLIST_Init(
+    gcsLISTHEAD_PTR Node
+    )
+{
+    INIT_LIST_HEAD(Node);
+}
 
+void inline
+gcsLIST_Add(
+    gcsLISTHEAD_PTR New,
+    gcsLISTHEAD_PTR Head
+    )
+{
+    list_add(New, Head);
+}
+
+void inline
+gcsLIST_AddTail(
+    gcsLISTHEAD_PTR New,
+    gcsLISTHEAD_PTR Head
+    )
+{
+    list_add_tail(New, Head);
+}
+
+void inline
+gcsLIST_Del(
+    gcsLISTHEAD_PTR Node
+    )
+{
+    list_del_init(Node);
+}
+#else
 static void
 _ListAdd(
     gcsLISTHEAD_PTR New,
@@ -5286,6 +5352,7 @@ gcsLIST_Del(
 {
     _ListDel(Node->prev, Node->next);
 }
+#endif
 
 gctBOOL
 gcsLIST_Empty(
@@ -5728,7 +5795,7 @@ gckDEVICE_SetTimeOut(
         }
         else
         {
-            kernel = coreList->kernels[i];
+            continue;
         }
 
         kernel->timeOut = Interface->u.SetTimeOut.timeOut;
@@ -5750,6 +5817,8 @@ gckDEVICE_Dispatch(
     gckKERNEL kernel;
     gceHARDWARE_TYPE type = Interface->hardwareType;
     gctUINT32 coreIndex = Interface->coreIndex;
+
+    gcmkHEADER_ARG("Device=%p Interface=%p", Device, Interface);
 
     switch (Interface->command)
     {
@@ -5777,6 +5846,9 @@ gckDEVICE_Dispatch(
     }
     else
     {
+        gcmkVERIFY_ARGUMENT(coreIndex < gcvCORE_COUNT);
+        gcmkVERIFY_ARGUMENT(type < gcvHARDWARE_NUM_TYPES);
+
         /* Need go through gckKERNEL dispatch. */
         if (type == gcvHARDWARE_3D || type == gcvHARDWARE_3D2D || type == gcvHARDWARE_VIP)
         {
@@ -5800,6 +5872,8 @@ gckDEVICE_Dispatch(
 
         /* Interface->status is handled in gckKERNEL_Dispatch(). */
     }
+
+    gcmkFOOTER();
 
     return status;
 }

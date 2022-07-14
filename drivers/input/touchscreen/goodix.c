@@ -162,6 +162,7 @@ static const struct goodix_chip_id goodix_chip_ids[] = {
 	{ .id = "911", .data = &gt911_chip_data },
 	{ .id = "9271", .data = &gt911_chip_data },
 	{ .id = "9110", .data = &gt911_chip_data },
+	{ .id = "9111", .data = &gt911_chip_data },
 	{ .id = "927", .data = &gt911_chip_data },
 	{ .id = "928", .data = &gt911_chip_data },
 
@@ -442,12 +443,10 @@ static irqreturn_t goodix_ts_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-#if 0
 static void goodix_free_irq(struct goodix_ts_data *ts)
 {
 	devm_free_irq(&ts->client->dev, ts->client->irq, ts);
 }
-#endif
 
 static int goodix_request_irq(struct goodix_ts_data *ts)
 {
@@ -534,6 +533,7 @@ static void goodix_calc_cfg_checksum_16(struct goodix_ts_data *ts)
  *
  * @ts: goodix_ts_data pointer
  * @cfg: firmware config data
+ * @len: config data length
  */
 static int goodix_check_cfg(struct goodix_ts_data *ts, const u8 *cfg, int len)
 {
@@ -552,6 +552,7 @@ static int goodix_check_cfg(struct goodix_ts_data *ts, const u8 *cfg, int len)
  *
  * @ts: goodix_ts_data pointer
  * @cfg: config firmware to write to device
+ * @len: config data length
  */
 static int goodix_send_cfg(struct goodix_ts_data *ts, const u8 *cfg, int len)
 {
@@ -1122,7 +1123,8 @@ static int goodix_configure_dev(struct goodix_ts_data *ts)
 /**
  * goodix_config_cb - Callback to finish device init
  *
- * @ts: our goodix_ts_data pointer
+ * @cfg: firmware config
+ * @ctx: our goodix_ts_data pointer
  *
  * request_firmware_wait callback that finishes
  * initialization of the device.
@@ -1286,7 +1288,7 @@ static int __maybe_unused goodix_suspend(struct device *dev)
 	}
 
 	/* Free IRQ as IRQ pin is used as output in the suspend sequence */
-	disable_irq(client->irq);
+	goodix_free_irq(ts);
 
 	/* Output LOW on the INT pin for 5 ms */
 	error = goodix_irq_direction_output(ts, 0);
@@ -1364,7 +1366,9 @@ static int __maybe_unused goodix_resume(struct device *dev)
 		}
 	}
 
-	enable_irq(client->irq);
+	error = goodix_request_irq(ts);
+	if (error)
+		return error;
 
 	return 0;
 }

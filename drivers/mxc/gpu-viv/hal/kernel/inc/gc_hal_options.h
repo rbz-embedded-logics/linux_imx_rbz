@@ -463,7 +463,7 @@ This define enables the use of VM for gckCommand and fence buffers.
         otherwise GPU will enter gcvPOWER_IDLE.
 */
 #ifndef gcdPOWER_SUSPEND_WHEN_IDLE
-#   define gcdPOWER_SUSPEND_WHEN_IDLE          1
+#   define gcdPOWER_SUSPEND_WHEN_IDLE          0
 #endif
 
 #ifndef gcdFPGA_BUILD
@@ -483,7 +483,7 @@ This define enables the use of VM for gckCommand and fence buffers.
 #if gcdFPGA_BUILD
 #   define gcdGPU_TIMEOUT                   2000000
 #else
-#   define gcdGPU_TIMEOUT                   20000
+#   define gcdGPU_TIMEOUT                   30000
 #endif
 #endif
 

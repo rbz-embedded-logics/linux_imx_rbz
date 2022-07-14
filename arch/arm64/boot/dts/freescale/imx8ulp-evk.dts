@@ -29,6 +29,11 @@
 		};
 	};
 
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0 0x80000000>;
+	};
+
 	rpmsg_keys: rpmsg-keys {
 		compatible = "fsl,rpmsg-keys";
 
@@ -115,6 +120,11 @@
 			no-map;
 			reg = <0 0xa8500000 0 0x100000>;
 		};
+
+		m33_reserved: m33_noncacheable_section@a8600000 {
+			no-map;
+			reg = <0 0xa8600000 0 0x1000000>;
+		};
 	};
 
 	reg_5v: regulator-5v {
@@ -159,6 +169,8 @@
 		model = "imx-spdif";
 		spdif-controller = <&spdif>;
 		spdif-out;
+		fsl,constraint-rate = <16000>, <32000>, <48000>,
+				      <64000>, <96000>, <192000>;
 	};
 
 	rpmsg_audio: rpmsg-audio {
@@ -173,6 +185,11 @@
 			"LINPUT3", "MICB";
 		status = "okay";
 	};
+};
+
+&clock_ext_ts {
+	/* External ts clock is 50MHZ from PHY on EVK board. */
+	clock-frequency = <50000000>;
 };
 
 &dcnano {
@@ -203,14 +220,10 @@
 	status = "okay";
 };
 
-&clock_ext_ts {
-	/* External ts clock is 50MHZ from PHY on EVK board. */
-	clock-frequency = <50000000>;
-};
-
 &fec {
-	pinctrl-names = "default";
+	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_enet>;
+	pinctrl-1 = <&pinctrl_enet>;
 	assigned-clocks = <&cgc1 IMX8ULP_CLK_ENET_TS_SEL>;
 	assigned-clock-parents = <&clock_ext_ts>;
 	phy-mode = "rmii";
@@ -229,8 +242,9 @@
 };
 
 &flexspi2 {
-	pinctrl-names = "default";
+	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_flexspi2_ptd>;
+	pinctrl-1 = <&pinctrl_flexspi2_ptd>;
 	status = "okay";
 
 	mx25uw51345gxdi00: flash@0 {
@@ -261,15 +275,12 @@
 		reg = <0x60>;
 	};
 
-	lsm6dsm@6a {
-		compatible = "st,lsm6dso";
-		reg = <0x6a>;
-	};
-
 	wm8960: wm8960@1a {
 		compatible = "wlf,wm8960,lpa";
 		reg = <0x1a>;
 		wlf,shared-lrclk;
+		clocks = <&wm8960_mclk>;
+		clock-names = "mclk";
 	};
 
 	ov5640_mipi: ov5640_mipi@3c {
@@ -330,11 +341,12 @@
 	pinctrl-0 = <&pinctrl_lpspi5>;
 	pinctrl-1 = <&pinctrl_lpspi5>;
 	cs-gpios = <&gpiof 19 GPIO_ACTIVE_LOW>;
+	pinctrl-assert-gpios = <&pca6416_1 10 GPIO_ACTIVE_LOW>;
 	status = "okay";
 
 	spidev0: spi@0 {
 		reg = <0>;
-		compatible = "ge,achc";
+		compatible = "lwn,bk4";
 		spi-max-frequency = <1000000>;
 	};
 };
@@ -385,6 +397,26 @@
 };
 
 &mu3 {
+	status = "okay";
+};
+
+&sai5 {
+	#sound-dai-cells = <0>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_sai5>;
+	pinctrl-1 = <&pinctrl_sai5>;
+	assigned-clocks = <&cgc1 IMX8ULP_CLK_SAI5_SEL>;
+	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
+	fsl,dataline = <0 0x08 0x01>;
+	status = "okay";
+};
+
+&spdif {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_spdif>;
+	pinctrl-1 = <&pinctrl_spdif>;
+	assigned-clocks = <&cgc2 IMX8ULP_CLK_SPDIF_SEL>;
+	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
 	status = "okay";
 };
 
@@ -454,8 +486,8 @@
 	bus-width = <4>;
 	keep-power-in-suspend;
 	non-removable;
-	fsl,sdio-interrupt-enabled;
 	wakeup-source;
+	fsl,sdio-async-interrupt-enabled;
 	status = "okay";
 
 	wifi_wake_host {
@@ -608,24 +640,6 @@
 		>;
 	};
 
-};
-
-&sai5 {
-	#sound-dai-cells = <0>;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai5>;
-	assigned-clocks = <&cgc1 IMX8ULP_CLK_SAI5_SEL>;
-	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
-	fsl,dataline = <0 0x08 0x01>;
-	status = "okay";
-};
-
-&spdif {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_spdif>;
-	assigned-clocks = <&cgc2 IMX8ULP_CLK_SPDIF_SEL>;
-	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
-	status = "okay";
 };
 
 &cameradev {

@@ -124,7 +124,8 @@ struct mxc_epdc_fb_data {
 	struct fb_var_screeninfo epdc_fb_var; /* Internal copy of screeninfo
 						so we can sync changes to it */
 	u32 pseudo_palette[16];
-	char fw_str[24];
+#define FW_STR_LEN	32
+	char fw_str[FW_STR_LEN];
 	struct list_head list;
 	struct imx_epdc_fb_mode *cur_mode;
 	struct imx_epdc_fb_platform_data *pdata;
@@ -294,6 +295,23 @@ static struct fb_videomode ed060xh2c1mode = {
 	.flag = 0,
 };
 
+static struct fb_videomode ed060xh7u2mode = {
+	.name = "ED060XH7U2",
+	.refresh = 85,
+	.xres = 1024,
+	.yres = 758,
+	.pixclock = 40000000,
+	.left_margin = 12,
+	.right_margin = 76,
+	.upper_margin = 4,
+	.lower_margin = 5,
+	.hsync_len = 12,
+	.vsync_len = 2,
+	.sync = 0,
+	.vmode = FB_VMODE_NONINTERLACED,
+	.flag = 0,
+};
+
 static struct fb_videomode e60_v110_mode = {
 	.name = "E60_V110",
 	.refresh = 50,
@@ -365,6 +383,19 @@ static struct fb_videomode e97_v110_mode = {
 static struct imx_epdc_fb_mode panel_modes[] = {
 	{
 		&ed060xh2c1mode,	/* struct fb_videomode *mode */
+		4, 	/* vscan_holdoff */
+		10, 	/* sdoed_width */
+		20, 	/* sdoed_delay */
+		10, 	/* sdoez_width */
+		20, 	/* sdoez_delay */
+		524, 	/* GDCLK_HP */
+		327, 	/* GDSP_OFF */
+		0, 	/* GDOE_OFF */
+		19, 	/* gdclk_offs */
+		1, 	/* num_ce */
+	},
+	{
+		&ed060xh7u2mode,
 		4, 	/* vscan_holdoff */
 		10, 	/* sdoed_width */
 		20, 	/* sdoed_delay */
@@ -987,7 +1018,7 @@ static inline bool epdc_any_luts_active(int rev)
 static inline bool epdc_any_luts_real_available(void)
 {
 	if ((__raw_readl(EPDC_STATUS_LUTS) != 0xfffffffe) ||
-		(__raw_readl(EPDC_STATUS_LUTS2) != ~0UL))
+		(__raw_readl(EPDC_STATUS_LUTS2) != ~0xffffffff))
 		return true;
 	else
 		return false;
@@ -1200,6 +1231,7 @@ static void epdc_set_vertical_timing(u32 vert_start, u32 vert_end,
 	__raw_writel(reg_val, EPDC_TCE_VSCAN);
 }
 
+/* Initialize EPDC, passing pointer to EPDC registers */
 static void epdc_init_settings(struct mxc_epdc_fb_data *fb_data)
 {
 	struct imx_epdc_fb_mode *epdc_mode = fb_data->cur_mode;
@@ -1212,6 +1244,7 @@ static void epdc_init_settings(struct mxc_epdc_fb_data *fb_data)
 	int j;
 	unsigned char *bb_p;
 
+	pm_runtime_get_sync(fb_data->dev);
 	/* Enable clocks to access EPDC regs */
 	clk_prepare_enable(fb_data->epdc_clk_axi);
 	clk_prepare_enable(fb_data->epdc_clk_ahb);
@@ -1419,6 +1452,7 @@ static void epdc_init_settings(struct mxc_epdc_fb_data *fb_data)
 	clk_disable_unprepare(fb_data->epdc_clk_axi);
 	clk_disable_unprepare(fb_data->epdc_clk_ahb);
 	clk_disable_unprepare(fb_data->epdc_clk_pix);
+	pm_runtime_put_sync_suspend(fb_data->dev);
 }
 
 static void epdc_powerup(struct mxc_epdc_fb_data *fb_data)
@@ -1479,8 +1513,7 @@ static void epdc_powerup(struct mxc_epdc_fb_data *fb_data)
 	clk_prepare_enable(fb_data->epdc_clk_ahb);
 	clk_prepare_enable(fb_data->epdc_clk_pix);
 
-	__raw_writel(EPDC_CTRL_CLKGATE, EPDC_CTRL_CLEAR);
-
+	epdc_init_settings(fb_data);
 
 	/* Enable power to the EPD panel */
 	if (fb_data->display_regulator) {
@@ -1561,9 +1594,6 @@ static void epdc_powerdown(struct mxc_epdc_fb_data *fb_data)
 
 static void epdc_init_sequence(struct mxc_epdc_fb_data *fb_data)
 {
-	/* Initialize EPDC, passing pointer to EPDC registers */
-	epdc_init_settings(fb_data);
-
 	fb_data->in_init = true;
 	epdc_powerup(fb_data);
 	draw_mode0(fb_data);
@@ -4755,7 +4785,7 @@ static void mxc_epdc_fb_fw_handler(const struct firmware *fw,
 		dev_dbg(fb_data->dev,
 			"Can't find firmware. Trying fallback fw\n");
 		fb_data->fw_default_load = true;
-		ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
+		ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_UEVENT,
 			"imx/epdc/epdc.fw", fb_data->dev, GFP_KERNEL, fb_data,
 			mxc_epdc_fb_fw_handler);
 		if (ret)
@@ -4819,12 +4849,23 @@ static void mxc_epdc_fb_fw_handler(const struct firmware *fw,
 	target_pix_clk = fb_data->cur_mode->vmode->pixclock;
 
 	rounded_pix_clk = clk_round_rate(fb_data->epdc_clk_pix, target_pix_clk);
+	if (rounded_pix_clk < 0) {
+		dev_err(fb_data->dev,
+			"Failed to round clock rate: %ld\n", rounded_pix_clk);
+		return;
+	}
 
 	if (((rounded_pix_clk >= target_pix_clk + target_pix_clk/100) ||
 		(rounded_pix_clk <= target_pix_clk - target_pix_clk/100))) {
 		/* Can't get close enough without changing parent clk */
 		epdc_parent = clk_get_parent(fb_data->epdc_clk_pix);
 		rounded_parent_rate = clk_round_rate(epdc_parent, target_pix_clk);
+		if (rounded_parent_rate < 0) {
+			dev_err(fb_data->dev,
+				"Failed to round parent clock rate: %ld\n",
+				rounded_parent_rate);
+			return;
+		}
 
 		epdc_pix_rate = target_pix_clk;
 		while (epdc_pix_rate < rounded_parent_rate)
@@ -4832,6 +4873,12 @@ static void mxc_epdc_fb_fw_handler(const struct firmware *fw,
 		clk_set_rate(epdc_parent, epdc_pix_rate);
 
 		rounded_pix_clk = clk_round_rate(fb_data->epdc_clk_pix, target_pix_clk);
+		if (rounded_pix_clk < 0) {
+			dev_err(fb_data->dev,
+				"Failed to round clock rate: %ld\n",
+				rounded_pix_clk);
+			return;
+		}
 		if (((rounded_pix_clk >= target_pix_clk + target_pix_clk/100) ||
 			(rounded_pix_clk <= target_pix_clk - target_pix_clk/100)))
 			/* Still can't get a good clock, provide warning */
@@ -4900,13 +4947,15 @@ static int mxc_epdc_fb_init_hw(struct fb_info *info)
 	 */
 	if (fb_data->cur_mode) {
 		strcpy(fb_data->fw_str, "imx/epdc/epdc_");
-		strcat(fb_data->fw_str, fb_data->cur_mode->vmode->name);
-		strcat(fb_data->fw_str, ".fw");
+		strncat(fb_data->fw_str, fb_data->cur_mode->vmode->name,
+			FW_STR_LEN - strlen(fb_data->fw_str) - 1);
+		strncat(fb_data->fw_str, ".fw",
+			FW_STR_LEN - strlen(fb_data->fw_str) - 1);
 	}
 
 	fb_data->fw_default_load = false;
 
-	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
+	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_UEVENT,
 				fb_data->fw_str, fb_data->dev, GFP_KERNEL,
 				fb_data, mxc_epdc_fb_fw_handler);
 	if (ret)
@@ -6001,7 +6050,7 @@ static int pxp_wfe_a_process_clear_workingbuffer(struct mxc_epdc_fb_data *fb_dat
 	dma_chan = &fb_data->pxp_chan->dma_chan;
 
 	txd = dma_chan->device->device_prep_slave_sg(dma_chan, sg, 2 + 4,
-						     DMA_TO_DEVICE,
+						     DMA_MEM_TO_DEV,
 						     DMA_PREP_INTERRUPT,
 						     NULL);
 	if (!txd) {
@@ -6182,7 +6231,7 @@ static int pxp_legacy_process(struct mxc_epdc_fb_data *fb_data,
 	dma_chan = &fb_data->pxp_chan->dma_chan;
 
 	txd = dma_chan->device->device_prep_slave_sg(dma_chan, sg, 2,
-						     DMA_TO_DEVICE,
+						     DMA_MEM_TO_DEV,
 						     DMA_PREP_INTERRUPT,
 						     NULL);
 	if (!txd) {
@@ -6319,7 +6368,7 @@ static int pxp_process_dithering(struct mxc_epdc_fb_data *fb_data,
 	dma_chan = &fb_data->pxp_chan->dma_chan;
 
 	txd = dma_chan->device->device_prep_slave_sg(dma_chan, sg, 2 + 4,
-						     DMA_TO_DEVICE,
+						     DMA_MEM_TO_DEV,
 						     DMA_PREP_INTERRUPT,
 						     NULL);
 	if (!txd) {
@@ -6467,7 +6516,7 @@ static int pxp_wfe_a_process(struct mxc_epdc_fb_data *fb_data,
 	dma_chan = &fb_data->pxp_chan->dma_chan;
 
 	txd = dma_chan->device->device_prep_slave_sg(dma_chan, sg, 2 + 4,
-						     DMA_TO_DEVICE,
+						     DMA_MEM_TO_DEV,
 						     DMA_PREP_INTERRUPT,
 						     NULL);
 	if (!txd) {
@@ -6664,7 +6713,7 @@ static int pxp_wfe_b_process_update(struct mxc_epdc_fb_data *fb_data,
 	dma_chan = &fb_data->pxp_chan->dma_chan;
 
 	txd = dma_chan->device->device_prep_slave_sg(dma_chan, sg, 2 + 4,
-						     DMA_TO_DEVICE,
+						     DMA_MEM_TO_DEV,
 						     DMA_PREP_INTERRUPT,
 						     NULL);
 	if (!txd) {
@@ -6948,4 +6997,3 @@ module_exit(mxc_epdc_fb_exit);
 MODULE_AUTHOR("Freescale Semiconductor, Inc.");
 MODULE_DESCRIPTION("MXC EPDC V2 framebuffer driver");
 MODULE_LICENSE("GPL");
-MODULE_SUPPORTED_DEVICE("fb");

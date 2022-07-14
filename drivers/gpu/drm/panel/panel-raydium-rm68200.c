@@ -235,22 +235,10 @@ static void rm68200_init_sequence(struct rm68200 *ctx)
 static int rm68200_disable(struct drm_panel *panel)
 {
 	struct rm68200 *ctx = panel_to_rm68200(panel);
-
-	if (!ctx->enabled)
-		return 0;
-
-	ctx->enabled = false;
-
-	return 0;
-}
-
-static int rm68200_unprepare(struct drm_panel *panel)
-{
-	struct rm68200 *ctx = panel_to_rm68200(panel);
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 	int ret;
 
-	if (!ctx->prepared)
+	if (!ctx->enabled)
 		return 0;
 
 	ret = mipi_dsi_dcs_set_display_off(dsi);
@@ -263,12 +251,24 @@ static int rm68200_unprepare(struct drm_panel *panel)
 
 	msleep(120);
 
-	gpiod_set_value_cansleep(ctx->enable_gpio, 0);
+	ctx->enabled = false;
+
+	return 0;
+}
+
+static int rm68200_unprepare(struct drm_panel *panel)
+{
+	struct rm68200 *ctx = panel_to_rm68200(panel);
+
+	if (!ctx->prepared)
+		return 0;
 
 	if (ctx->reset_gpio) {
 		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 		msleep(20);
 	}
+
+	gpiod_set_value_cansleep(ctx->enable_gpio, 0);
 
 	regulator_disable(ctx->supply);
 
@@ -280,7 +280,6 @@ static int rm68200_unprepare(struct drm_panel *panel)
 static int rm68200_prepare(struct drm_panel *panel)
 {
 	struct rm68200 *ctx = panel_to_rm68200(panel);
-	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 	int ret;
 
 	if (ctx->prepared)
@@ -292,6 +291,8 @@ static int rm68200_prepare(struct drm_panel *panel)
 		return ret;
 	}
 
+	gpiod_set_value_cansleep(ctx->enable_gpio, 1);
+
 	if (ctx->reset_gpio) {
 		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
 		msleep(20);
@@ -299,7 +300,19 @@ static int rm68200_prepare(struct drm_panel *panel)
 		msleep(100);
 	}
 
-	gpiod_set_value_cansleep(ctx->enable_gpio, 1);
+	ctx->prepared = true;
+
+	return 0;
+}
+
+static int rm68200_enable(struct drm_panel *panel)
+{
+	struct rm68200 *ctx = panel_to_rm68200(panel);
+	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
+	int ret;
+
+	if (ctx->enabled)
+		return 0;
 
 	rm68200_init_sequence(ctx);
 
@@ -314,18 +327,6 @@ static int rm68200_prepare(struct drm_panel *panel)
 		return ret;
 
 	msleep(20);
-
-	ctx->prepared = true;
-
-	return 0;
-}
-
-static int rm68200_enable(struct drm_panel *panel)
-{
-	struct rm68200 *ctx = panel_to_rm68200(panel);
-
-	if (ctx->enabled)
-		return 0;
 
 	ctx->enabled = true;
 

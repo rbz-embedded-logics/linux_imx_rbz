@@ -9,8 +9,12 @@
 	status = "disabled";
 };
 
-&i2c_rpbus_0 {
-	/delete-node/lsm6dsm@6a;
+&lpspi5 {
+	status = "disabled";
+};
+
+&rpmsg_sensor {
+	status = "disabled";
 };
 
 &i3c2 {

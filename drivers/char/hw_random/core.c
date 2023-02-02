@@ -15,6 +15,7 @@
 #include <linux/err.h>
 #include <linux/fs.h>
 #include <linux/hw_random.h>
+#include <linux/random.h>
 #include <linux/kernel.h>
 #include <linux/kthread.h>
 #include <linux/sched/signal.h>
@@ -31,7 +32,6 @@ static struct hwrng *current_rng;
 /* the current rng has been explicitly chosen by user via sysfs */
 static int cur_rng_set_by_user;
 static struct task_struct *hwrng_fill;
-static struct completion hwrng_started = COMPLETION_INITIALIZER(hwrng_started);
 /* list of registered rngs, sorted decending by quality */
 static LIST_HEAD(rng_list);
 /* Protects rng_list and current_rng */
@@ -427,15 +427,12 @@ static int hwrng_fillfn(void *unused)
 {
 	long rc;
 
-    complete(&hwrng_started);
 	while (!kthread_should_stop()) {
 		struct hwrng *rng;
 
 		rng = get_current_rng();
-		if (IS_ERR(rng) || !rng) {
-            msleep_interruptible(10);
+		if (IS_ERR(rng) || !rng)
 			break;
-        }
 		mutex_lock(&reading_mutex);
 		rc = rng_get_data(rng, rng_fillbuf,
 				  rng_buffer_size(), 1);
@@ -460,9 +457,7 @@ static void start_khwrngd(void)
 	if (IS_ERR(hwrng_fill)) {
 		pr_err("hwrng_fill thread creation failed\n");
 		hwrng_fill = NULL;
-	} else {
-      wait_for_completion(&hwrng_started);
-    }
+	}
 }
 
 int hwrng_register(struct hwrng *rng)

@@ -5,6 +5,7 @@
 
 /dts-v1/;
 
+#include <dt-bindings/phy/phy-imx8-pcie.h>
 #include "../freescale/imx8mp.dtsi"
 #include "mod-imx8m-plus.dtsi"
 

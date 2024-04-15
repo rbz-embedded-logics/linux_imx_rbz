@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright 2019 NXP
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/phy/phy-imx8-pcie.h>
+#include <dt-bindings/usb/pd.h>
+#include "../freescale/imx8mm.dtsi"
+#include "mod-imx8m-mini.dtsi"
+
+/ {
+	model = "RBZ Carrier Basic";
+	compatible = "fsl,imx8mm-evk", "fsl,imx8mm";
+
+    sound_max9867: sound-max9867 {
+      compatible = "fsl,imx-audio-max9867";
+      model = "imx-max9867";
+      cpu-dai = <&sai5>;
+      audio-codec = <&max9867>;
+      audio-routing = 
+        "Headphone Jack", "LOUT",
+        "Headphone Jack", "ROUT",
+        "Mic Jack", "MICR";
+    };
+};
+
+&i2c1 {
+  max9867: codec@18 {
+    clock-frequency = <12288000>;
+    compatible = "maxim,max9867";
+    reg = <0x18>;
+    clocks = <&clk IMX8MM_CLK_SAI5_ROOT>;
+  };
+};
+
+&usdhc1 {
+  status = "okay";
+};
+
+&ecspi1 {
+  status = "okay";
+
+  at25@0 {
+    compatible = "atmel,at25";
+    reg = <0>;
+    spi-max-frequency = <500000>;
+    pagesize = <8>;
+    size = <128>;
+    address-width = <8>;
+  };
+  
+  at25@1 {
+    compatible = "atmel,at25";
+    reg = <1>;
+    spi-max-frequency = <500000>;
+    pagesize = <8>;
+    size = <128>;
+    address-width = <8>;
+  };
+};
+
+&ecspi2 {
+  status = "okay";
+
+  at25@0 {
+    compatible = "atmel,at25";
+    reg = <0>;
+    spi-max-frequency = <500000>;
+    pagesize = <8>;
+    size = <128>;
+    address-width = <8>;
+  };
+  
+  at25@1 {
+    compatible = "atmel,at25";
+    reg = <1>;
+    spi-max-frequency = <500000>;
+    pagesize = <8>;
+    size = <128>;
+    address-width = <8>;
+  };
+};
+
+&dsi_lvds_bridge {
+  status = "disabled";
+};
+
+&lt_bridge {
+  status = "okay";
+};

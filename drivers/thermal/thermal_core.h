@@ -109,6 +109,7 @@ int thermal_register_governor(struct thermal_governor *);
 void thermal_unregister_governor(struct thermal_governor *);
 int thermal_zone_device_set_policy(struct thermal_zone_device *, char *);
 int thermal_build_list_of_policies(char *buf);
+void thermal_zone_device_critical_reboot(struct thermal_zone_device *tz);
 
 /* Helpers */
 void thermal_zone_set_trips(struct thermal_zone_device *tz);

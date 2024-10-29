@@ -376,6 +376,7 @@
 
 	thermal-zones {
 		cpu-thermal {
+            critical-action = "reboot";
 			polling-delay-passive = <250>;
 			polling-delay = <2000>;
 			thermal-sensors = <&tmu 0>;
